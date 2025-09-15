@@ -295,89 +295,29 @@ def webhook():
                 user_text = "(message non-textuel reçu)"
 
 
-            # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
-reply_text = None
-            try:
-                if OPENAI_API_KEY:
-                    # 1) Mémoriser le message utilisateur
-                    if user_text:
-                        append_history(wa_id, "user", user_text)
-
-                    # 2) Charger l'historique récent
-                    past = read_history(wa_id, limit=8)
-
-                    system_prompt = (
-                        "Tu es l’assistant commercial & SAV de l’entreprise « Les Gazons de la Hardt ».\n"
-                        "\n"
-                        "OBJECTIF\n"
-                        "- Réponds en français, avec un ton professionnel, chaleureux et pédagogique.\n"
-                        "- Informe le client brièvement : explique en quelques mots les avantages et limites.\n"
-                        "- Mets en avant les bénéfices du gazon en rouleau (densité immédiate, gain de temps)\n"
-                        "  mais rappelle brièvement qu’il nécessite de l’entretien (tonte, arrosage régulier, engrais 3x/an).\n"
-                        "- Si le client semble hésitant, encourage à poser des questions et explique clairement.\n"
-                        "- Ne pousse pas à la vente immédiatement : d’abord s’assurer que le client a bien compris et que le besoin est clair.\n"
-                        "\n"
-                        "NOTRE OFFRE (à proposer si pertinent et au bon moment)\n"
-                        "1) Gazon en rouleau ELITE : rendu esthétique, dense, confortable, idéal pour usage familial (entretien standard).\n"
-                        "2) Gazon en rouleau WATER SAVER : résistant à la sécheresse, économique en eau, bon plein soleil/périodes chaudes.\n"
-                        "3) Graines de gazon : mêmes variétés que nos champs, pour semer soi-même (solution économique / calendrier flexible).\n"
-                        "4) Engrais à libération lente : plan simple = 3 apports/an pour garder un gazon impeccable.\n"
-                        "5) Livraison : réalisée via des sociétés de transport, tarif dépendant ville/volume/date.\n"
-                        "\n"
-                        "DIAGNOSTIC À POSER (si infos manquantes)\n"
-                        "- Surface (m²) et code postal.\n"
-                        "- Exposition (soleil/ombre), possibilité d’arrosage.\n"
-                        "- Objectif principal : rapidité, esthétique, économie d’eau, budget.\n"
-                        "- Calendrier souhaité et accès camion.\n"
-                        "\n"
-                        "RÈGLES DE RECOMMANDATION\n"
-                        "- Si le client mentionne sécheresse, arrosage limité, économie d’eau, plein soleil : prioriser WATER SAVER.\n"
-                        "- Si le client veut le meilleur rendu/agrément/confort et accepte un entretien standard : prioriser ELITE.\n"
-                        "- Si le client préfère semer (budget ou timing) : proposer nos GRAINES, mêmes qualités que nos champs.\n"
-                        "- Toujours proposer notre ENGRAIS à libération lente (rappel : 3 apports/an suffisent) comme complément utile.\n"
-                        "- Si informations insuffisantes : poser 1 ou 2 questions ciblées avant de trancher.\n"
-                        "\n"
-                        "STYLE & CONTENU\n"
-                        "- Réponds en 1–4 phrases claires, pédagogiques.\n"
-                        "- Mets en avant les avantages mais rappelle brièvement l’entretien nécessaire.\n"
-                        "- Oriente ensuite vers une solution adaptée (Elite, Water Saver, Graines, engrais, livraison) selon le besoin.\n"
-                        "- Ne force pas la vente : guide et conseille comme un expert bienveillant.\n"
-                        "- Termine par une question ouverte, adaptée au contexte de l’échange.\n"
-                    )
-
-                    # 3) Construire le contexte avec l'historique
-                    messages = [{"role": "system", "content": system_prompt}]
-                    messages.extend(past)  # historique (user/assistant) récent
-                    messages.append({"role": "user", "content": user_text or "Bonjour"})
-
                     # 4) Appel OpenAI
                     chat = client.chat.completions.create(
                         model="gpt-4o-mini",
-                        temperature=0.7,
+                        temperature=0.8,
                         max_tokens=300,
                         messages=messages
                     )
                     reply_text = (chat.choices[0].message.content or "").strip()
-
+                        
                     # 5) Mémoriser la réponse de l'IA
                     if reply_text:
                         append_history(wa_id, "assistant", reply_text)
-
+                        
                     # Optionnel : suffixe ultra-léger (vide ici pour ne rien ajouter)
-                    light_reminder = " "
-
+                    light_reminder = " "   
+                        
                     # Ajoute le rappel uniquement s’il n’apparaît pas déjà
                     if "entretien" not in reply_text.lower():
                         reply_text = f"{reply_text}\n\n{light_reminder}"
-
+                        
                     # S’assure que la réponse se termine par une question
                     if not reply_text.strip().endswith(("?", "？")):
                         reply_text = reply_text.rstrip(".!… ") + " " + closing_question
-
-
-            except Exception as e:
-                print("OpenAI error:", e, flush=True)
-
             if not reply_text:
                 reply_text = (
                     "Merci pour votre message 👋 Le gazon en rouleau vous fait gagner du temps "
