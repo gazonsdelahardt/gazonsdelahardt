@@ -385,10 +385,14 @@ def webhook():
             else:
                 user_text = "(message non-textuel reçu)"
 
+            # Le client vient de parler : on note l’heure et on autorise une future relance
             last_user_at[wa_id] = datetime.utcnow()
             followup_sent[wa_id] = False
-            print(f"[followup] GOT user msg from {wa_id} at {last_user_at[wa_id].isoformat()} : {user_text!r}", flush=True) 
-            
+            print(
+                f"[followup] GOT user msg from {wa_id} at {last_user_at[wa_id].isoformat()} : {user_text}",
+                flush=True
+            )
+
             # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
             reply_text = None
             try:
