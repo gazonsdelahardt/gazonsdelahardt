@@ -102,43 +102,51 @@ if not os.path.exists(CHAT_CSV):
 # =====================
 
 def followup_worker():
-    """
-    Envoie une relance si l'utilisateur n'a pas répondu après SILENCE_AFTER,
-    à condition que le bot ait bien répondu après le dernier message utilisateur,
-    et que la conversation soit < 24h.
-    """
-    CHECK_EVERY = 60  # pour tester vite; remets 60 en prod
+    CHECK_EVERY = 10  # pendant les tests ; remets 60 en prod
     while True:
         try:
             now = datetime.utcnow()
             for wa_id, last_user in list(last_user_at.items()):
                 if not last_user:
+                    print(f"[followup] skip {wa_id}: no last_user", flush=True)
                     continue
+
                 if followup_sent.get(wa_id, False):
+                    print(f"[followup] skip {wa_id}: already sent", flush=True)
                     continue
 
                 last_bot = last_bot_at.get(wa_id)
-                # Le bot doit avoir répondu après le dernier message user
                 if not last_bot or last_bot <= last_user:
+                    print(f"[followup] skip {wa_id}: bot_not_after_user "
+                          f"(last_bot={last_bot}, last_user={last_user})", flush=True)
                     continue
 
-                # Fenêtre de silence: entre SILENCE_AFTER et 24h après le dernier msg user
-                if now - last_user >= SILENCE_AFTER and now - last_user <= timedelta(hours=24):
-                    try:
-                        nudge = random.choice([
-                            "Souhaitez-vous que je vous aide à estimer la surface ou la livraison ?",
-                            "Je peux vous guider entre Elite et Water Saver si vous hésitez.",
-                            "Besoin d’un récap rapide sur l’entretien (arrosage, tonte, engrais) ?",
-                            "Je reste dispo si vous avez une question 🙂"
-                        ])
-                        send_whatsapp_message(wa_id, nudge)
-                        followup_sent[wa_id] = True
-                        last_bot_at[wa_id] = now
-                    except Exception as e:
-                        print("followup send error:", e, flush=True)
+                delta = now - last_user
+                if not (SILENCE_AFTER <= delta <= timedelta(hours=24)):
+                    print(f"[followup] wait {wa_id}: delta={delta}, "
+                          f"window=({SILENCE_AFTER}, 24h)", flush=True)
+                    continue
+
+                print(f"[followup] SEND nudge to {wa_id} (delta={delta})", flush=True)
+                try:
+                    nudge = random.choice([
+                        "Souhaitez-vous que je vous aide à estimer la surface ou la livraison ?",
+                        "Je peux vous guider entre Elite et Water Saver si vous hésitez.",
+                        "Besoin d’un récap rapide sur l’entretien (arrosage, tonte, engrais) ?",
+                        "Je reste dispo si vous avez une question 🙂"
+                    ])
+                    send_whatsapp_message(wa_id, nudge)
+                    followup_sent[wa_id] = True
+                    last_bot_at[wa_id] = now
+                except Exception as e:
+                    print("followup send error:", e, flush=True)
+
+            print(f"[followup] loop: users={len(last_user_at)}, "
+                  f"sent_flags={sum(1 for v in followup_sent.values() if v)}", flush=True)
         except Exception as e:
             print("followup worker error:", e, flush=True)
         time.sleep(CHECK_EVERY)
+
 
 # =====================
 # Customer Management
@@ -361,10 +369,10 @@ def webhook():
             else:
                 user_text = "(message non-textuel reçu)"
 
-            # Le client vient de parler : on note l’heure et on autorise une future relance
             last_user_at[wa_id] = datetime.utcnow()
             followup_sent[wa_id] = False
-
+            print(f"[followup] GOT user msg from {wa_id} at {last_user_at[wa_id].isoformat()} : {user_text!r}", flush=True) 
+            
             # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
             reply_text = None
             try:
@@ -464,11 +472,9 @@ def webhook():
             try:
                 send_whatsapp_message(wa_id, reply_text)
                 last_bot_at[wa_id] = datetime.utcnow()
-                print(f"[BOT] replied to {wa_id} at {last_bot_at[wa_id]}", flush=True)
-                # Important pour le rappel 10 min : on date la réponse du bot
+                print(f"[followup] BOT replied to {wa_id} at {last_bot_at[wa_id].isoformat()}", flush=True)
             except Exception as e:
                 print("send_whatsapp_message error:", e, flush=True)
-
             return jsonify({"status": "ok"}), 200
 
       	  # Rien d’utile
