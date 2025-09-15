@@ -31,7 +31,7 @@ def append_history(wa_id: str, role: str, content: str) -> None:
         w = csv.writer(f)
         w.writerow([wa_id, role, content, datetime.utcnow().isoformat()])
 
-def read_history(wa_id: str, limit: int = 10):
+def read_history(wa_id: str, limit: int = 20):
     """Retourne les 'limit' derniers messages (role, content) pour ce wa_id."""
     rows = []
     if not HISTORY_FILE.exists():
