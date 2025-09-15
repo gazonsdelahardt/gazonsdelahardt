@@ -116,15 +116,20 @@ def followup_worker():
                     continue
 
                 last_bot = last_bot_at.get(wa_id)
+                # Le bot doit avoir répondu après le dernier message user
                 if not last_bot or last_bot <= last_user:
-                    print(f"[followup] skip {wa_id}: bot_not_after_user "
-                          f"(last_bot={last_bot}, last_user={last_user})", flush=True)
+                    print(
+                        f"[followup] skip {wa_id}: bot_not_after_user (last_bot={last_bot}, last_user={last_user})",
+                        flush=True
+                    )
                     continue
 
                 delta = now - last_user
                 if not (SILENCE_AFTER <= delta <= timedelta(hours=24)):
-                    print(f"[followup] wait {wa_id}: delta={delta}, "
-                          f"window=({SILENCE_AFTER}, 24h)", flush=True)
+                    print(
+                        f"[followup] wait {wa_id}: delta={delta}, window=({SILENCE_AFTER}, 24h)",
+                        flush=True
+                    )
                     continue
 
                 print(f"[followup] SEND nudge to {wa_id} (delta={delta})", flush=True)
@@ -138,14 +143,19 @@ def followup_worker():
                     send_whatsapp_message(wa_id, nudge)
                     followup_sent[wa_id] = True
                     last_bot_at[wa_id] = now
+                    print(f"[followup] sent to {wa_id}", flush=True)
                 except Exception as e:
                     print("followup send error:", e, flush=True)
 
-            print(f"[followup] loop: users={len(last_user_at)}, "
-                  f"sent_flags={sum(1 for v in followup_sent.values() if v)}", flush=True)
+            print(
+                f"[followup] loop: users={len(last_user_at)}, sent_flags={sum(1 for v in followup_sent.values() if v)}",
+                flush=True
+            )
         except Exception as e:
             print("followup worker error:", e, flush=True)
-        time.sleep(CHECK_EVERY)
+
+        # Petit jitter pour éviter les envois trop synchronisés quand il y a beaucoup d'utilisateurs
+        time.sleep(CHECK_EVERY + random.uniform(0, 2))
 
 
 # =====================
@@ -193,6 +203,12 @@ def send_whatsapp_message(wa_id, text):
     response = requests.post(url, headers=headers, data=json.dumps(payload))
     result = response.json()
     print("WA send status:", response.status_code, response.text, flush=True)
+
+    # Amorcer un suivi même en outbound-first
+    if wa_id not in last_user_at or last_user_at[wa_id] is None:
+        last_user_at[wa_id] = datetime.utcnow()
+        followup_sent[wa_id] = False
+        print(f"[followup] outbound-first init for {wa_id} at {last_user_at[wa_id].isoformat()}", flush=True)
 
     # ✅ If 24h window expired, send template instead
 
