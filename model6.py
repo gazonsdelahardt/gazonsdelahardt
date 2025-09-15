@@ -63,9 +63,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")       # OpenAI API key
 CHAT_CSV = "chat_history.csv"
 CUSTOMER_FILE = "customers.csv"
 
+# =====================
+# Flask + OpenAI
+# =====================
+from flask import Flask
 app = Flask(__name__)
 
-# Initialize OpenAI client
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+from openai import OpenAI
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 # --- Timers & mémoire de suivi inactif ---
@@ -116,13 +121,14 @@ if not os.path.exists(CHAT_CSV):
 # =====================
 # Follow-up Worker (relance après silence)
 # =====================
+
 def followup_worker():
     """
     Envoie une relance si l'utilisateur n'a pas répondu après SILENCE_AFTER,
     à condition que le bot ait bien répondu après le dernier message utilisateur,
     et que la conversation soit < 24h.
     """
-    CHECK_EVERY = 60  # fréquence de vérif (en secondes). Pour test, tu peux mettre 10.
+    CHECK_EVERY = 10  # pour tester vite; remets 60 en prod
     while True:
         try:
             now = datetime.utcnow()
@@ -137,7 +143,7 @@ def followup_worker():
                 if not last_bot or last_bot <= last_user:
                     continue
 
-                # Fenêtre de silence entre SILENCE_AFTER et 24h
+                # Fenêtre de silence: entre SILENCE_AFTER et 24h après le dernier msg user
                 if now - last_user >= SILENCE_AFTER and now - last_user <= timedelta(hours=24):
                     try:
                         nudge = random.choice([
@@ -155,7 +161,12 @@ def followup_worker():
             print("followup worker error:", e, flush=True)
         time.sleep(CHECK_EVERY)
 
-
+try:
+    _FOLLOWUP_STARTED
+except NameError:
+    _FOLLOWUP_STARTED = True
+    threading.Thread(target=followup_worker, daemon=True).start()
+    print(">>> followup_worker STARTED", flush=True)
 
 # =====================
 # Customer Management
