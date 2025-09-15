@@ -464,8 +464,8 @@ def webhook():
             try:
                 send_whatsapp_message(wa_id, reply_text)
                 last_bot_at[wa_id] = datetime.utcnow()
+                print(f"[BOT] replied to {wa_id} at {last_bot_at[wa_id]}", flush=True)
                 # Important pour le rappel 10 min : on date la réponse du bot
-                last_bot_at[wa_id] = datetime.utcnow()
             except Exception as e:
                 print("send_whatsapp_message error:", e, flush=True)
 
