@@ -1,0 +1,25 @@
+from flask import Flask, request
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
+
+app = Flask(__name__)
+
+@app.route('/webhook', methods=['GET', 'POST'])
+def webhook():
+    if request.method == 'GET':
+        mode = request.args.get('hub.mode')
+        token = request.args.get('hub.verify_token')
+        challenge = request.args.get('hub.challenge')
+        print('GET /webhook ->', {'mode': mode, 'token': token, 'challenge': challenge, 'VERIFY_TOKEN': VERIFY_TOKEN}, flush=True)
+        if mode == 'subscribe' and token == VERIFY_TOKEN:
+            return challenge or '', 200
+        return 'Verification token mismatch', 403
+    print('POST /webhook ->', request.get_json(silent=True), flush=True)
+    return 'OK', 200
+
+if __name__ == '__main__':
+    app.run(port=5000, debug=True)
+
