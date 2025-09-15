@@ -20,6 +20,10 @@ processed_order = deque(maxlen=2000)
 # =====================
 load_dotenv()
 
+# Mémoire légère par contact (in-memory)
+last_user_at = defaultdict(lambda: None)    # dernière heure d’un message client
+last_bot_at = defaultdict(lambda: None)     # dernière heure d’un message IA
+followup_sent = defaultdict(lambda: False)  # relance déjà envoyée ?
 
 from pathlib import Path
 
@@ -295,6 +299,10 @@ def webhook():
             else:
                 user_text = "(message non-textuel reçu)"
 
+            # Le client vient de parler : on note l’heure et on autorise une future relance
+            last_user_at[wa_id] = datetime.utcnow()
+            followup_sent[wa_id] = False
+
             # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
             reply_text = None
             try:
@@ -393,10 +401,13 @@ def webhook():
             # --- Envoi WhatsApp + sortie webhook ---
             try:
                 send_whatsapp_message(wa_id, reply_text)
+                # Important pour le rappel 10 min : on date la réponse du bot
+                last_bot_at[wa_id] = datetime.utcnow()
             except Exception as e:
                 print("send_whatsapp_message error:", e, flush=True)
 
             return jsonify({"status": "ok"}), 200
+
       	  # Rien d’utile
         return jsonify({"status": "no_message"}), 200
 
