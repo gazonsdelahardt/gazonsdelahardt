@@ -102,7 +102,12 @@ if not os.path.exists(CHAT_CSV):
 # =====================
 
 def followup_worker():
-    CHECK_EVERY = 10  # pendant les tests ; remets 60 en prod
+    """
+    Envoie une relance si l'utilisateur n'a pas répondu après SILENCE_AFTER,
+    à condition que le bot ait bien répondu après le dernier message utilisateur,
+    et que la conversation soit < 24h.
+    """
+    CHECK_EVERY = 10  # tests ; remets 60 en prod
     while True:
         try:
             now = datetime.utcnow()
@@ -156,6 +161,14 @@ def followup_worker():
 
         # Petit jitter pour éviter les envois trop synchronisés quand il y a beaucoup d'utilisateurs
         time.sleep(CHECK_EVERY + random.uniform(0, 2))
+
+# --- Démarrer le worker une seule fois ---
+try:
+    _FOLLOWUP_STARTED
+except NameError:
+    _FOLLOWUP_STARTED = True
+    threading.Thread(target=followup_worker, daemon=True).start()
+    print(">>> followup_worker STARTED", flush=True)
 
 
 # =====================
@@ -385,7 +398,6 @@ def webhook():
             else:
                 user_text = "(message non-textuel reçu)"
 
-            # Le client vient de parler : on note l’heure et on autorise une future relance
             last_user_at[wa_id] = datetime.utcnow()
             followup_sent[wa_id] = False
             print(
