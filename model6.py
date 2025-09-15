@@ -19,6 +19,34 @@ processed_order = deque(maxlen=2000)
 # =====================
 load_dotenv()
 
+
+from pathlib import Path
+
+HISTORY_FILE = Path("chat_history.csv")
+HISTORY_FILE.touch(exist_ok=True)
+
+def append_history(wa_id: str, role: str, content: str) -> None:
+    """Ajoute une ligne d'historique (wa_id, role=user/assistant, content, timestamp)."""
+    with HISTORY_FILE.open("a", newline="") as f:
+        w = csv.writer(f)
+        w.writerow([wa_id, role, content, datetime.utcnow().isoformat()])
+
+def read_history(wa_id: str, limit: int = 10):
+    """Retourne les 'limit' derniers messages (role, content) pour ce wa_id."""
+    rows = []
+    if not HISTORY_FILE.exists():
+        return rows
+    with HISTORY_FILE.open("r", newline="") as f:
+        r = csv.reader(f)
+        for row in r:
+            if len(row) < 4:
+                continue
+            if row[0] == wa_id:
+                rows.append({"role": row[1], "content": row[2]})
+    return rows[-limit:]
+
+
+
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")           # Meta Verify Token
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")       # Permanent WhatsApp token
 PHONE_NUMBER_ID = os.getenv("PHONE_NUMBER_ID")     # WhatsApp Phone Number ID
@@ -268,26 +296,33 @@ def webhook():
 
 
             # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
-            reply_text = None
+reply_text = None
             try:
                 if OPENAI_API_KEY:
+                    # 1) Mémoriser le message utilisateur
+                    if user_text:
+                        append_history(wa_id, "user", user_text)
+
+                    # 2) Charger l'historique récent
+                    past = read_history(wa_id, limit=8)
+
                     system_prompt = (
                         "Tu es l’assistant commercial & SAV de l’entreprise « Les Gazons de la Hardt ».\n"
                         "\n"
                         "OBJECTIF\n"
                         "- Réponds en français, avec un ton professionnel, chaleureux et pédagogique.\n"
-                        "- Informe le client brièvement : explique en quelques mots les avantages et limites,très brièvement, et développe si le client pose des questions.\n"
-                        "- Mets en avant les bénéfices du gazon en rouleau (densité immédiate, gain de temps par rapport au semis), "
-                        "mais rappelle brièvement qu’il nécessite de l’entretien (tonte, arrosage régulier, engrais 3x/an).\n"
-                        "- Si le client semble hésitant, encourage à poser des questions et explique calmement.\n"
-                        "- Ne pousse pas à la vente immédiatement : d’abord s’assurer que le client a bien compris ce que cela implique.\n"
+                        "- Informe le client brièvement : explique en quelques mots les avantages et limites.\n"
+                        "- Mets en avant les bénéfices du gazon en rouleau (densité immédiate, gain de temps)\n"
+                        "  mais rappelle brièvement qu’il nécessite de l’entretien (tonte, arrosage régulier, engrais 3x/an).\n"
+                        "- Si le client semble hésitant, encourage à poser des questions et explique clairement.\n"
+                        "- Ne pousse pas à la vente immédiatement : d’abord s’assurer que le client a bien compris et que le besoin est clair.\n"
                         "\n"
                         "NOTRE OFFRE (à proposer si pertinent et au bon moment)\n"
-                        "1) Gazon en rouleau ELITE : rendu esthétique, dense, confortable, idéal pour pelouses d’agrément/usage familial.\n"
-                        "2) Gazon en rouleau WATER SAVER : résistant à la sécheresse, économique en eau, parfait en plein soleil.\n"
-                        "3) Graines de gazon : mêmes variétés que nos champs, pour semer soi-même (solution économique si on a du temps).\n"
+                        "1) Gazon en rouleau ELITE : rendu esthétique, dense, confortable, idéal pour usage familial (entretien standard).\n"
+                        "2) Gazon en rouleau WATER SAVER : résistant à la sécheresse, économique en eau, bon plein soleil/périodes chaudes.\n"
+                        "3) Graines de gazon : mêmes variétés que nos champs, pour semer soi-même (solution économique / calendrier flexible).\n"
                         "4) Engrais à libération lente : plan simple = 3 apports/an pour garder un gazon impeccable.\n"
-                        "5) Livraison : réalisée via des sociétés de transport, tarif dépendant ville/surface.\n"
+                        "5) Livraison : réalisée via des sociétés de transport, tarif dépendant ville/volume/date.\n"
                         "\n"
                         "DIAGNOSTIC À POSER (si infos manquantes)\n"
                         "- Surface (m²) et code postal.\n"
@@ -298,30 +333,38 @@ def webhook():
                         "RÈGLES DE RECOMMANDATION\n"
                         "- Si le client mentionne sécheresse, arrosage limité, économie d’eau, plein soleil : prioriser WATER SAVER.\n"
                         "- Si le client veut le meilleur rendu/agrément/confort et accepte un entretien standard : prioriser ELITE.\n"
-                        "- Si le client préfère semer (budget ou timing) : proposer nos GRAINES, notre terre amendée et nos compost pour le potager (mêmes qualités que nos champs).\n"
+                        "- Si le client préfère semer (budget ou timing) : proposer nos GRAINES, mêmes qualités que nos champs.\n"
                         "- Toujours proposer notre ENGRAIS à libération lente (rappel : 3 apports/an suffisent) comme complément utile.\n"
                         "- Si informations insuffisantes : poser 1 ou 2 questions ciblées avant de trancher.\n"
                         "\n"
                         "STYLE & CONTENU\n"
                         "- Réponds en 1–4 phrases claires, pédagogiques.\n"
                         "- Mets en avant les avantages mais rappelle brièvement l’entretien nécessaire.\n"
-                        "- Oriente ensuite vers une solution adaptée (Elite, Water Saver, Graines, regarnissage) en fonction des besoins.\n"
+                        "- Oriente ensuite vers une solution adaptée (Elite, Water Saver, Graines, engrais, livraison) selon le besoin.\n"
                         "- Ne force pas la vente : guide et conseille comme un expert bienveillant.\n"
+                        "- Termine par une question ouverte, adaptée au contexte de l’échange.\n"
                     )
 
+                    # 3) Construire le contexte avec l'historique
+                    messages = [{"role": "system", "content": system_prompt}]
+                    messages.extend(past)  # historique (user/assistant) récent
+                    messages.append({"role": "user", "content": user_text or "Bonjour"})
+
+                    # 4) Appel OpenAI
                     chat = client.chat.completions.create(
                         model="gpt-4o-mini",
                         temperature=0.7,
                         max_tokens=300,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_text or "Bonjour"}
-                        ]
+                        messages=messages
                     )
                     reply_text = (chat.choices[0].message.content or "").strip()
 
+                    # 5) Mémoriser la réponse de l'IA
+                    if reply_text:
+                        append_history(wa_id, "assistant", reply_text)
+
+                    # Optionnel : suffixe ultra-léger (vide ici pour ne rien ajouter)
                     light_reminder = " "
-                    closing_question = " "
 
                     # Ajoute le rappel uniquement s’il n’apparaît pas déjà
                     if "entretien" not in reply_text.lower():
