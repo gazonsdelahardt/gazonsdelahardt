@@ -107,7 +107,7 @@ def followup_worker():
     à condition que le bot ait bien répondu après le dernier message utilisateur,
     et que la conversation soit < 24h.
     """
-    CHECK_EVERY = 10  # pour tester vite; remets 60 en prod
+    CHECK_EVERY = 60  # pour tester vite; remets 60 en prod
     while True:
         try:
             now = datetime.utcnow()
@@ -245,6 +245,14 @@ def promotion_worker():
             send_promo_template(wa_id)
 
         last_promo_date = next_run.date()
+
+# --- Démarre le worker une seule fois (compatible Render/Gunicorn) ---
+try:
+    _FOLLOWUP_STARTED
+except NameError:
+    _FOLLOWUP_STARTED = True
+    threading.Thread(target=followup_worker, daemon=True).start()
+    print(">>> followup_worker STARTED", flush=True)
 
 
 # =====================
