@@ -294,8 +294,61 @@ def webhook():
             else:
                 user_text = "(message non-textuel reçu)"
 
+            # --- Génère une réponse (OpenAI si possible, sinon fallback simple) ---
+            reply_text = None
+            try:
+                if OPENAI_API_KEY:
+                    # 1) mémoriser le message utilisateur
+                    if user_text:
+                        append_history(wa_id, "user", user_text)
 
-                    # 4) Appel OpenAI
+                    # 2) recharger l'historique (20 derniers échanges)
+                    past = read_history(wa_id, limit=20)
+
+                    # 3) prompt système complet
+                    system_prompt = (
+                        "Tu es l’assistant commercial & SAV de l’entreprise « Les Gazons de la Hardt ».\n"
+                        "\n"
+                        "OBJECTIF\n"
+                        "- Réponds en français, avec un ton professionnel, chaleureux et pédagogique.\n"
+                        "- Informe le client brièvement : explique en quelques mots les avantages et limites.\n"
+                        "- Mets en avant les bénéfices du gazon en rouleau : densité immédiate, gain de temps par rapport au semis.\n"
+                        "- Mais rappelle aussi qu’il nécessite un entretien : tonte régulière, arrosage, 3 apports d’engrais par an.\n"
+                        "- Si le client hésite, encourage-le à poser des questions et rassure-le.\n"
+                        "- Ne force pas la vente immédiatement : assure-toi d’abord qu’il a toutes les infos nécessaires.\n"
+                        "\n"
+                        "NOTRE OFFRE\n"
+                        "1) Gazon en rouleau ELITE : esthétique, dense, idéal usage familial/agrément.\n"
+                        "2) Gazon en rouleau WATER SAVER : résistant à la sécheresse, économique en eau, parfait en plein soleil.\n"
+                        "3) Graines de gazon : mêmes variétés que nos champs, pour semer soi-même (solution économique).\n"
+                        "4) Engrais à libération lente : seulement 3 apports par an pour un gazon impeccable.\n"
+                        "5) Livraison : via transporteurs, prix dépend de la ville, surface et date.\n"
+                        "\n"
+                        "DIAGNOSTIC À POSER (si infos manquantes)\n"
+                        "- Surface (m²) et code postal.\n"
+                        "- Exposition (soleil/ombre), possibilité d’arrosage.\n"
+                        "- Objectif principal : rapidité, esthétique, économie d’eau, budget.\n"
+                        "- Calendrier souhaité et accès camion.\n"
+                        "\n"
+                        "RÈGLES DE RECOMMANDATION\n"
+                        "- Si mention sécheresse / arrosage limité / économie d’eau → WATER SAVER.\n"
+                        "- Si priorité esthétique premium → ELITE.\n"
+                        "- Si budget serré ou semis → Graines.\n"
+                        "- Toujours proposer engrais comme complément utile.\n"
+                        "- Si infos manquantes → poser 1 ou 2 questions ciblées.\n"
+                        "\n"
+                        "STYLE & CONTENU\n"
+                        "- Réponds en 1–4 phrases claires, pédagogiques.\n"
+                        "- Mets en avant avantages mais rappelle brièvement l’entretien nécessaire.\n"
+                        "- Termine toujours par une question ouverte.\n"
+                    )
+
+                    # 4) Construire le contexte avec mémoire
+                    messages = [{"role": "system", "content": system_prompt}]
+                    messages.extend(past)
+                    messages.append({"role": "user", "content": user_text or "Bonjour"})
+
+                    # 5) Appel OpenAI
                     chat = client.chat.completions.create(
                         model="gpt-4o-mini",
                         temperature=0.8,
@@ -303,26 +356,24 @@ def webhook():
                         messages=messages
                     )
                     reply_text = (chat.choices[0].message.content or "").strip()
-                        
-                    # 5) Mémoriser la réponse de l'IA
+
+                    # 6) Mémoriser la réponse IA
                     if reply_text:
                         append_history(wa_id, "assistant", reply_text)
-                        
-                    # Optionnel : suffixe ultra-léger (vide ici pour ne rien ajouter)
-                    light_reminder = " "   
-                        
-                    # Ajoute le rappel uniquement s’il n’apparaît pas déjà
-                    if "entretien" not in reply_text.lower():
-                        reply_text = f"{reply_text}\n\n{light_reminder}"
-                        
-                    # S’assure que la réponse se termine par une question
+
+                    # 7) S’assurer que la réponse se termine par une question
+                    closing_question = "Qu’est-ce qui compte le plus pour vous : rapidité, esthétique ou économie d’eau ?"
                     if not reply_text.strip().endswith(("?", "？")):
                         reply_text = reply_text.rstrip(".!… ") + " " + closing_question
+
+            except Exception as e:
+                print("OpenAI error:", e, flush=True)
+
             if not reply_text:
                 reply_text = (
-                    "Merci pour votre message 👋 Le gazon en rouleau vous fait gagner du temps "
-                    "et donne une densité immédiate, mais il demande arrosage, tonte et 3 apports d’engrais/an. "
-                    "Quel est votre code postal et la surface à couvrir ?"
+                    "Merci pour votre message 👋 Le gazon en rouleau donne une densité immédiate "
+                    "et fait gagner du temps par rapport au semis, mais il demande arrosage, tonte et engrais. "
+                    "Quelle est la surface et le code postal de votre projet ?"
                 )
 
             # --- Envoi WhatsApp + sortie webhook ---
