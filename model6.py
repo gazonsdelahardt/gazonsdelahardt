@@ -69,29 +69,8 @@ CUSTOMER_FILE = "customers.csv"
 from flask import Flask
 app = Flask(__name__)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 from openai import OpenAI
 client = OpenAI(api_key=OPENAI_API_KEY)
-
-# --- Timers & mémoire de suivi inactif ---
-from collections import defaultdict
-from datetime import datetime, timedelta
-
-# --- Démarrer le worker une seule fois (compatible Render/Gunicorn) ---
-try:
-    _FOLLOWUP_STARTED
-except NameError:
-    _FOLLOWUP_STARTED = True
-    threading.Thread(target=followup_worker, daemon=True).start()
-    print(">>> followup_worker STARTED", flush=True)
-
-# Délai avant relance automatique (prod = 10 min ; pour test tu peux mettre 1)
-SILENCE_AFTER = timedelta(minutes=1)
-
-# Mémoires par utilisateur
-last_user_at = defaultdict(lambda: None)    # dernière fois que l'utilisateur a parlé
-last_bot_at = defaultdict(lambda: None)     # dernière fois que le bot a répondu
-followup_sent = defaultdict(lambda: False)  # relance déjà envoyée (évite doublons)
 
 
 # =====================
@@ -161,13 +140,6 @@ def followup_worker():
             print("followup worker error:", e, flush=True)
         time.sleep(CHECK_EVERY)
 
-try:
-    _FOLLOWUP_STARTED
-except NameError:
-    _FOLLOWUP_STARTED = True
-    threading.Thread(target=followup_worker, daemon=True).start()
-    print(">>> followup_worker STARTED", flush=True)
-
 # =====================
 # Customer Management
 # =====================
@@ -215,6 +187,9 @@ def send_whatsapp_message(wa_id, text):
     print("WA send status:", response.status_code, response.text, flush=True)
 
     # ✅ If 24h window expired, send template instead
+
+
+
 
 # --- Flask app ---
 app = Flask(__name__)
