@@ -68,6 +68,27 @@ app = Flask(__name__)
 # Initialize OpenAI client
 client = OpenAI(api_key=OPENAI_API_KEY)
 
+# --- Timers & mémoire de suivi inactif ---
+from collections import defaultdict
+from datetime import datetime, timedelta
+
+# --- Démarrer le worker une seule fois (compatible Render/Gunicorn) ---
+try:
+    _FOLLOWUP_STARTED
+except NameError:
+    _FOLLOWUP_STARTED = True
+    threading.Thread(target=followup_worker, daemon=True).start()
+    print(">>> followup_worker STARTED", flush=True)
+
+# Délai avant relance automatique (prod = 10 min ; pour test tu peux mettre 1)
+SILENCE_AFTER = timedelta(minutes=1)
+
+# Mémoires par utilisateur
+last_user_at = defaultdict(lambda: None)    # dernière fois que l'utilisateur a parlé
+last_bot_at = defaultdict(lambda: None)     # dernière fois que le bot a répondu
+followup_sent = defaultdict(lambda: False)  # relance déjà envoyée (évite doublons)
+
+
 # =====================
 # Memory (per user chat)
 # =====================
@@ -90,6 +111,50 @@ if not os.path.exists(CHAT_CSV):
     with open(CHAT_CSV, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["timestamp", "wa_id", "role", "content"])
+
+
+# =====================
+# Follow-up Worker (relance après silence)
+# =====================
+def followup_worker():
+    """
+    Envoie une relance si l'utilisateur n'a pas répondu après SILENCE_AFTER,
+    à condition que le bot ait bien répondu après le dernier message utilisateur,
+    et que la conversation soit < 24h.
+    """
+    CHECK_EVERY = 60  # fréquence de vérif (en secondes). Pour test, tu peux mettre 10.
+    while True:
+        try:
+            now = datetime.utcnow()
+            for wa_id, last_user in list(last_user_at.items()):
+                if not last_user:
+                    continue
+                if followup_sent.get(wa_id, False):
+                    continue
+
+                last_bot = last_bot_at.get(wa_id)
+                # Le bot doit avoir répondu après le dernier message user
+                if not last_bot or last_bot <= last_user:
+                    continue
+
+                # Fenêtre de silence entre SILENCE_AFTER et 24h
+                if now - last_user >= SILENCE_AFTER and now - last_user <= timedelta(hours=24):
+                    try:
+                        nudge = random.choice([
+                            "Souhaitez-vous que je vous aide à estimer la surface ou la livraison ?",
+                            "Je peux vous guider entre Elite et Water Saver si vous hésitez.",
+                            "Besoin d’un récap rapide sur l’entretien (arrosage, tonte, engrais) ?",
+                            "Je reste dispo si vous avez une question 🙂"
+                        ])
+                        send_whatsapp_message(wa_id, nudge)
+                        followup_sent[wa_id] = True
+                        last_bot_at[wa_id] = now
+                    except Exception as e:
+                        print("followup send error:", e, flush=True)
+        except Exception as e:
+            print("followup worker error:", e, flush=True)
+        time.sleep(CHECK_EVERY)
+
 
 
 # =====================
