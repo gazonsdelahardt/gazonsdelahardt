@@ -1,3 +1,4 @@
+import random
 import requests
 import json
 import os
@@ -361,19 +362,32 @@ def webhook():
                     if reply_text:
                         append_history(wa_id, "assistant", reply_text)
 
-                    # 7) S’assurer que la réponse se termine par une question
-                    closing_question = "Qu’est-ce qui compte le plus pour vous : rapidité, esthétique ou économie d’eau ?"
-                    if not reply_text.strip().endswith(("?", "？")):
-                        reply_text = reply_text.rstrip(".!… ") + " " + closing_question
+                    # 7) Parfois terminer par une question (≈ 50%), sinon laisser respirer
+                    def wants_question(user_txt, ai_txt):
+                        # Si la réponse contient déjà des éléments “finaux”, on évite de relancer
+                        keywords = ["prix", "tarif", "devis", "livraison", "planning", "disponible", "stock"]
+                        if any(k in (ai_txt or "").lower() for k in keywords):
+                            return False
+                        return random.random() < 0.5  # 50% des cas
+
+                    if wants_question(user_text or "", reply_text or ""):
+                        closing_question = random.choice([
+                            "Vous préférez viser l’esthétique, l’économie d’eau, ou la simplicité d’entretien ?",
+                            "Souhaitez-vous qu’on estime la surface et la livraison ?",
+                            "Vous avez déjà une date en tête pour la pose ?",
+                            "Je vous détaille l’entretien (arrosage, tonte, engrais) ?"
+                        ])
+                        if not reply_text.strip().endswith(("?", "？")):
+                            reply_text = reply_text.rstrip(".!… ") + " " + closing_question
 
             except Exception as e:
                 print("OpenAI error:", e, flush=True)
 
             if not reply_text:
+                # Fallback sans question systématique
                 reply_text = (
-                    "Merci pour votre message 👋 Le gazon en rouleau donne une densité immédiate "
-                    "et fait gagner du temps par rapport au semis, mais il demande arrosage, tonte et engrais. "
-                    "Quelle est la surface et le code postal de votre projet ?"
+                    "Merci pour votre message 👋 Le gazon en rouleau offre une densité immédiate et fait gagner du temps par rapport au semis, "
+                    "tout en demandant un entretien raisonnable (arrosage, tonte, 3 apports d’engrais/an)."
                 )
 
             # --- Envoi WhatsApp + sortie webhook ---
