@@ -15,6 +15,9 @@ from collections import deque
 processed_message_ids = set()
 processed_order = deque(maxlen=2000)
 
+# Paramètre délai avant relance
+SILENCE_AFTER = timedelta(minutes=1)   # prod = 10 min ; pour test tu peux mettre 1
+
 # =====================
 # Load Environment Vars
 # =====================
