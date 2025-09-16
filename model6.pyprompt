@@ -1,4 +1,4 @@
-promimport random
+import random
 import requests
 import json
 import os
@@ -333,6 +333,7 @@ OBJECTIF
 - Donne des conseils techniques simples (préparation du sol, nivelage, arrosage, entretien).
 - Une fois le besoin défini (surface + mélange + engrais), invite à contacter l’équipe pour devis/commande.
 - Une fois que la demande du client est claire, indique lui les coordoonées de l'entreprise pour nous joinre en nous communiquant les articles dont il a besoin
+
 NOTRE OFFRE (à citer selon l’intérêt)
 1) Préparation du sol :
    - « Mélange Terre Compost » – densité 1 t = 1 m³, livrable en vrac, big bag ou sac.
