@@ -16,7 +16,7 @@ processed_message_ids = set()
 processed_order = deque(maxlen=2000)
 
 # Paramètre délai avant relance
-SILENCE_AFTER = timedelta(minutes=1)   # prod = 10 min ; pour test tu peux mettre 1
+SILENCE_AFTER = timedelta(minutes=15)   # prod = 10 min ; pour test tu peux mettre 1
 
 # =====================
 # Load Environment Vars
@@ -101,13 +101,21 @@ if not os.path.exists(CHAT_CSV):
 # Follow-up Worker (relance après silence)
 # =====================
 
+# =====================
+# Follow-up Worker (relance après silence)
+# =====================
+
 def followup_worker():
     """
     Envoie une relance si l'utilisateur n'a pas répondu après SILENCE_AFTER,
     à condition que le bot ait bien répondu après le dernier message utilisateur,
     et que la conversation soit < 24h.
     """
-    CHECK_EVERY = 10  # tests ; remets 60 en prod
+    CHECK_EVERY = 180  # fréquence de vérification (secondes)
+
+    # Log de configuration au démarrage du worker
+    print(f"[config] SILENCE_AFTER={SILENCE_AFTER}, CHECK_EVERY={CHECK_EVERY}", flush=True)
+
     while True:
         try:
             now = datetime.utcnow()
@@ -121,18 +129,34 @@ def followup_worker():
                     continue
 
                 last_bot = last_bot_at.get(wa_id)
+
+                # Log des timestamps connus pour ce user
+                print(
+                    f"[followup] {wa_id}: last_user={last_user.isoformat()}, "
+                    f"last_bot={(last_bot.isoformat() if last_bot else None)}",
+                    flush=True
+                )
+
                 # Le bot doit avoir répondu après le dernier message user
                 if not last_bot or last_bot <= last_user:
                     print(
-                        f"[followup] skip {wa_id}: bot_not_after_user (last_bot={last_bot}, last_user={last_user})",
+                        f"[followup] skip {wa_id}: bot_not_after_user "
+                        f"(last_bot={last_bot}, last_user={last_user})",
                         flush=True
                     )
                     continue
 
                 delta = now - last_user
+                # Log du delta et du seuil
+                print(
+                    f"[followup] {wa_id}: delta={delta}, threshold={SILENCE_AFTER}",
+                    flush=True
+                )
+
                 if not (SILENCE_AFTER <= delta <= timedelta(hours=24)):
                     print(
-                        f"[followup] wait {wa_id}: delta={delta}, window=({SILENCE_AFTER}, 24h)",
+                        f"[followup] wait {wa_id}: delta={delta}, "
+                        f"window=({SILENCE_AFTER}, 24h)",
                         flush=True
                     )
                     continue
@@ -152,15 +176,19 @@ def followup_worker():
                 except Exception as e:
                     print("followup send error:", e, flush=True)
 
+            # Résumé d’itération
             print(
-                f"[followup] loop: users={len(last_user_at)}, sent_flags={sum(1 for v in followup_sent.values() if v)}",
+                f"[followup] loop: users={len(last_user_at)}, "
+                f"sent_flags={sum(1 for v in followup_sent.values() if v)}",
                 flush=True
             )
+
         except Exception as e:
             print("followup worker error:", e, flush=True)
 
-        # Petit jitter pour éviter les envois trop synchronisés quand il y a beaucoup d'utilisateurs
+        # Petit jitter pour éviter les envois trop synchronisés
         time.sleep(CHECK_EVERY + random.uniform(0, 2))
+
 
 # --- Démarrer le worker une seule fois ---
 try:
